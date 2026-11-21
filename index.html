@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>模型名里那个8B</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif; background: #f1f0ec; color: #22211d; line-height: 1.6; }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 20px 14px 40px; }
+  h1 { font-size: 25px; letter-spacing: 1px; }
+  .lead { color: #5e5b52; font-size: 14px; margin: 4px 0 14px; }
+  .card { background: #fff; border-radius: 8px; padding: 14px; border: 1px solid #d8d5cb; margin-bottom: 14px; min-width: 0; }
+  .card h2 { font-size: 15px; color: #5e5b52; font-weight: 600; margin-bottom: 8px; overflow-wrap: anywhere; }
+  input, select { font: inherit; font-size: 14px; padding: 4px 6px; border: 1px solid #b4b0a3; border-radius: 5px; width: 100%; min-width: 0; background: #fdfcfa; font-variant-numeric: tabular-nums; }
+  .bad { border-color: #b23a2b !important; background: #fff0ec !important; }
+  label { font-size: 12px; color: #6d695f; display: block; }
+  button { font: inherit; font-size: 13px; padding: 6px 11px; border-radius: 5px; border: 1px solid #3b4d7a; background: #3b4d7a; color: #fff; cursor: pointer; }
+  button.ghost { background: #fff; color: #3b4d7a; }
+  .row4 { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; }
+  .presets, .dl { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+  .err { display: none; background: #fff0ec; border: 1px solid #e0b2a7; color: #8a2a1b; border-radius: 8px; padding: 10px 12px; margin-bottom: 14px; overflow-wrap: anywhere; }
+  .muted { color: #6d695f; font-size: 12px; }
+  /* 模型铭牌 */
+  .plate { border: 2px solid #22211d; border-radius: 6px; padding: 10px 12px; background: #fbfaf5; display: grid; gap: 8px; }
+  .plate .nm { font-size: 18px; font-weight: 700; overflow-wrap: anywhere; }
+  .plate .nm small { font-size: 12px; color: #6d695f; font-weight: 400; margin-left: 6px; }
+  details summary { cursor: pointer; font-size: 13px; color: #3b4d7a; }
+  /* 显存条：一张卡的格子 */
+  #summary { font-size: 20px; font-weight: 700; overflow-wrap: anywhere; margin-bottom: 8px; }
+  .gauge { position: relative; height: 54px; border: 2px solid #22211d; border-radius: 6px; background: repeating-linear-gradient(90deg, #f6f5f0 0 calc(var(--u) - 1px), #e2dfd5 calc(var(--u) - 1px) var(--u)); overflow: hidden; }
+  .gauge .seg { position: absolute; top: 0; bottom: 0; }
+  .gauge .w { background: #3b4d7a; } .gauge .k { background: #c98a2b; } .gauge .o { background: #8f8b80; }
+  .gauge .spill { background: repeating-linear-gradient(45deg, rgba(178,58,43,.9) 0 3px, rgba(178,58,43,0) 3px 10px); border-left: 2px solid #22211d; }
+  .gwrap { position: relative; padding-right: 0; }
+  .gaxis { display: flex; flex-wrap: wrap; gap: 2px 10px; justify-content: space-between; font-size: 12px; color: #6d695f; font-variant-numeric: tabular-nums; margin-top: 2px; }
+  .gleg { display: flex; flex-wrap: wrap; gap: 12px; font-size: 13px; margin-top: 6px; }
+  .gleg span { display: inline-flex; gap: 5px; align-items: center; min-width: 0; overflow-wrap: anywhere; } .gleg i { width: 12px; height: 12px; border-radius: 2px; display: inline-block; flex: none; }
+  #facts { margin: 10px 0 0 18px; font-size: 14px; } #facts li { margin: 3px 0; overflow-wrap: anywhere; }
+  /* 量化 × 上下文 格子 */
+  .gw { overflow-x: auto; }
+  table.g { border-collapse: separate; border-spacing: 3px; font-size: 12px; font-variant-numeric: tabular-nums; min-width: 620px; width: 100%; }
+  table.g th { font-weight: 600; color: #6d695f; padding: 4px; text-align: center; white-space: nowrap; }
+  table.g th.r { text-align: left; }
+  table.g td { padding: 6px 4px; text-align: center; border-radius: 4px; white-space: nowrap; }
+  td.fit { background: #dbe8d4; color: #234019; } td.part { background: #f6e3bf; color: #6a4508; } td.none { background: #f1d0c9; color: #7c2416; }
+  td.cur { outline: 3px solid #22211d; outline-offset: -1px; font-weight: 700; }
+  table.g td.mx { background: none; color: #22211d; }
+  #sugs { display: grid; gap: 8px; }
+  .sug { display: flex; gap: 10px; align-items: center; justify-content: space-between; border: 1px solid #e4e1d8; border-radius: 6px; padding: 8px 10px; }
+  .sug span { min-width: 0; overflow-wrap: anywhere; font-size: 14px; } .sug button { flex: none; }
+  @media (max-width: 480px) { .sug { flex-direction: column; align-items: stretch; } #summary { font-size: 18px; } }
+  .how { font-size: 13px; color: #45423a; } .how p { margin: 6px 0; } .how b { color: #22211d; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>模型名里那个8B</h1>
+  <p class="lead">想在自己的显卡上跑开源大模型：模型名写着 8B，选 Q4 还是 Q8，上下文开多长，显存够不够？选好模型和卡，这里按格式标称位数和模型自己的层数、KV 头数算一笔显存账，放不下就告诉你差多少、改哪一项最省。默认场景是虚构的一台 8 GiB 显卡的电脑。</p>
+
+  <div class="card">
+    <h2>模型</h2>
+    <div class="plate">
+      <div class="nm" id="plateName"></div>
+      <div class="row4">
+        <div><label for="model">内置模型（结构取自官方 config.json）</label><select id="model"></select></div>
+        <div><label for="quant">权重量化</label><select id="quant"></select></div>
+        <div id="bpwBox"><label for="bpw">每个参数几位（自定义）</label><input id="bpw" inputmode="decimal" maxlength="8"></div>
+        <div><label for="kv">KV 缓存精度</label><select id="kv"></select></div>
+        <div><label for="ctx">想开的上下文（tokens）</label><input id="ctx" inputmode="numeric" maxlength="9"></div>
+      </div>
+      <details id="arch">
+        <summary>模型结构（选内置模型自动填；跑别的模型就照它的 config.json 改）</summary>
+        <div class="row4" style="margin-top:8px">
+          <div><label for="label">模型名字</label><input id="label" maxlength="24"></div>
+          <div><label for="params">参数量（B，十亿）</label><input id="params" inputmode="decimal" maxlength="10"></div>
+          <div><label for="layers">层数 num_hidden_layers</label><input id="layers" inputmode="numeric" maxlength="4"></div>
+          <div><label for="kvHeads">KV 头数 num_key_value_heads</label><input id="kvHeads" inputmode="numeric" maxlength="4"></div>
+          <div><label for="headDim">每头维度 head_dim</label><input id="headDim" inputmode="numeric" maxlength="5"></div>
+          <div><label for="maxCtx">最长上下文 max_position_embeddings</label><input id="maxCtx" inputmode="numeric" maxlength="9"></div>
+        </div>
+      </details>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>显卡</h2>
+    <div class="row4">
+      <div><label for="vram">显存（GiB，卡上标的「8G」就填 8）</label><input id="vram" inputmode="decimal" maxlength="6"></div>
+      <div><label for="over">额外开销（GiB：计算缓冲、框架、桌面显示，自己定）</label><input id="over" inputmode="decimal" maxlength="6"></div>
+    </div>
+    <div class="presets" id="presets"></div>
+  </div>
+
+  <div class="err" id="error"></div>
+
+  <div id="out">
+    <div class="card">
+      <div id="summary"></div>
+      <div class="gwrap"><div class="gauge" id="gauge"></div><div class="gaxis" id="gaxis"></div></div>
+      <div class="gleg" id="gleg"></div>
+      <ul id="facts"></ul>
+    </div>
+    <div class="card">
+      <h2>换量化、换上下文，这张卡还放得下吗（KV 精度不变）</h2>
+      <div class="gw"><table class="g" id="grid"></table></div>
+      <p class="muted" style="margin-top:4px">绿 = 整个模型放在卡上，格子里是还剩多少；黄 = 只能部分层上卡，格子里是差多少；红 = 一层都放不下。黑框是你现在选的。显存条从左到右依次是额外开销、权重、KV 缓存，黑竖线是卡的容量，右边斜线部分是超出的。最右一列是这种量化整模在卡最长能开多少上下文。</p>
+    </div>
+    <div class="card" id="sugCard">
+      <h2>换个条件看看（点一下代回去重算）</h2>
+      <div id="sugs"></div>
+    </div>
+  </div>
+  <div class="card">
+    <h2>带走结果</h2>
+    <div class="dl">
+      <button id="dlCSV">CSV 表格</button><button id="dlMD">Markdown</button><button id="dlPNG">结果卡 PNG</button><button id="dlJSON" class="ghost">JSON 备份</button>
+      <button id="reset" class="ghost">恢复默认</button>
+    </div>
+    <p class="muted" style="margin-top:6px">输入自动保存在这台设备的浏览器里，刷新还在。</p>
+  </div>
+
+  <div class="card how">
+    <h2>怎么算的</h2>
+    <p><b>权重</b> = 参数量 × 每个参数的位数 ÷ 8。位数用格式的标称值：BF16 16、Q8_0 8.5、Q6_K 6.5625；Q5_K_M、Q4_K_M、Q3_K_M 是混合格式，按约 5.7、4.85、3.9 位估，实际文件大小以下载页为准，可以选「自定义」填。</p>
+    <p><b>KV 缓存</b> = 2 × 层数 × KV 头数 × 每头维度 × 上下文长度 × 每个数几字节（FP16 2、Q8_0 1.0625、Q4_0 0.5625）。用了分组注意力（GQA）的模型 KV 头比注意力头少，所以要看 KV 头数。</p>
+    <p><b>放得下</b>：权重 + KV + 额外开销 ≤ 显存。<b>最长上下文</b> =（显存 − 额外开销 − 权重）÷ 每个 token 的 KV，且不超过模型自己的最长上下文。<b>部分上卡</b>：按每层一样大估，（显存 − 额外开销）÷（（权重 + KV）÷ 层数）向下取整。1 GiB = 2³⁰ 字节。</p>
+    <p class="muted">不做：速度（每秒多少 token）、多卡切分、MoE 模型的激活参数、视觉/语音编码器、vLLM 按比例预占显存、模型回答质量。内置模型的结构数据抓自 hf-mirror.com 上各模型仓库的 config.json 与 safetensors 索引（2026-11-21）。本页不推荐任何显卡或模型。</p>
+  </div>
+</div>
+
+  <script>
+/* 模型名里那个8B · 计算核心（浏览器里挂 window.AppCore，Node 里 module.exports）
+ * 想在自己的显卡上跑一个开源大模型：模型名里写着 7B/8B/14B，量化选 Q4 还是 Q8，上下文开多长，显存够不够？
+ *
+ * 规则（本页的估算口径，不是任何推理框架的实测）：
+ *  - 1 GiB = 2^30 字节。显卡标「8G」一般就是 8 GiB。
+ *  - 权重 = 参数量 × 每个参数的位数 ÷ 8。位数按量化格式的标称值：BF16 16、Q8_0 8.5、Q6_K 6.5625（这三个是格式本身定的），
+ *    Q5_K_M≈5.7、Q4_K_M≈4.85、Q3_K_M≈3.9（K_M 是混合格式，不同层用不同位数，这三个是约数）。实际文件大小以下载页为准，可以填自定义位数。
+ *  - KV 缓存 = 2（K 和 V）× 层数 × KV 头数 × 每头维度 × 上下文长度 × 每个元素的字节（FP16 2、Q8_0 1.0625、Q4_0 0.5625）。
+ *  - 额外开销（计算缓冲、框架自身、桌面显示占的显存）只用一个「自己定」的 GiB 数，本页不猜框架。
+ *  - 放得下：权重 + KV + 额外开销 ≤ 显存。放不下时按「每层权重 = 总权重 ÷ 层数、每层 KV 跟着层走」估能有几层放在显卡上，
+ *    其余放内存交给 CPU（会慢很多，本页不估速度）。嵌入层、输出层的大小差异忽略不计。
+ *  不做：速度（tokens/s）、多卡切分、MoE 的激活参数、视觉/语音模型的额外编码器、vLLM 那种按比例预占显存的做法、模型好不好用。 */
+(function (root) {
+  'use strict';
+  const GiB = 1073741824;
+  const QUANTS = [
+    { id: 'bf16', name: 'BF16（不量化）', bpw: 16, exact: true },
+    { id: 'q8_0', name: 'Q8_0', bpw: 8.5, exact: true },
+    { id: 'q6_k', name: 'Q6_K', bpw: 6.5625, exact: true },
+    { id: 'q5_k_m', name: 'Q5_K_M', bpw: 5.7, exact: false },
+    { id: 'q4_k_m', name: 'Q4_K_M', bpw: 4.85, exact: false },
+    { id: 'q3_k_m', name: 'Q3_K_M', bpw: 3.9, exact: false }
+  ];
+  const KVS = [
+    { id: 'f16', name: 'FP16', bytes: 2 },
+    { id: 'q8_0', name: 'Q8_0', bytes: 1.0625 },
+    { id: 'q4_0', name: 'Q4_0', bytes: 0.5625 }
+  ];
+  /* 模型结构：取自各模型仓库的 config.json（层数、KV 头数、每头维度、最长上下文）与 model.safetensors.index.json 的 total_size（BF16，÷2 = 参数个数）。
+   * 抓取：hf-mirror.com，2026-11-21，原文在批次 evidence/模型配置/。 */
+  const MODELS = [
+    { id: 'qwen2.5-3b', name: 'Qwen2.5-3B-Instruct', params: 3.0859, layers: 36, kvHeads: 2, headDim: 128, maxCtx: 32768 },
+    { id: 'qwen2.5-7b', name: 'Qwen2.5-7B-Instruct', params: 7.6156, layers: 28, kvHeads: 4, headDim: 128, maxCtx: 32768 },
+    { id: 'mistral-7b', name: 'Mistral-7B-Instruct-v0.3', params: 7.248, layers: 32, kvHeads: 8, headDim: 128, maxCtx: 32768 },
+    { id: 'r1-llama-8b', name: 'DeepSeek-R1-Distill-Llama-8B', params: 8.0303, layers: 32, kvHeads: 8, headDim: 128, maxCtx: 131072 },
+    { id: 'qwen3-8b', name: 'Qwen3-8B', params: 8.1907, layers: 36, kvHeads: 8, headDim: 128, maxCtx: 40960 },
+    { id: 'qwen3-14b', name: 'Qwen3-14B', params: 14.7683, layers: 40, kvHeads: 8, headDim: 128, maxCtx: 40960 },
+    { id: 'qwen2.5-14b', name: 'Qwen2.5-14B-Instruct', params: 14.77, layers: 48, kvHeads: 8, headDim: 128, maxCtx: 32768 },
+    { id: 'qwen3-32b', name: 'Qwen3-32B', params: 32.7621, layers: 64, kvHeads: 8, headDim: 128, maxCtx: 40960 },
+    { id: 'qwen2.5-32b', name: 'Qwen2.5-32B-Instruct', params: 32.7639, layers: 64, kvHeads: 8, headDim: 128, maxCtx: 32768 }
+  ];
+  const CARDS = [4, 6, 8, 10, 11, 12, 16, 20, 24, 32, 40, 48, 64, 80, 96, 128, 141, 192];
+  const CTXCOLS = [4096, 8192, 16384, 32768, 65536, 131072];
+
+  function round(x, d) { const m = Math.pow(10, d); return Math.round((x + (x >= 0 ? 1 : -1) * 1e-9) * m) / m; }
+  function fmt(x, d) {
+    const r = round(x, d);
+    let s = Math.abs(r).toFixed(d);
+    if (d > 0) s = s.replace(/\.?0+$/, '');
+    const parts = s.split('.');
+    parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    return (r < 0 ? '-' : '') + parts.join('.');
+  }
+  /* GiB 两位小数，固定显示两位 */
+  function gib(bytes) { const r = round(bytes / GiB, 2); const t = Math.abs(r).toFixed(2).split('.'); return (r < 0 ? '-' : '') + t[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',') + '.' + t[1] + ' GiB'; }
+  /* 剩余：四舍五入后是 0.00 时写「不到 0.01 GiB」 */
+  function left(b) { return b < 0.005 * GiB ? '不到 0.01 GiB' : gib(b); }
+  function tok(n) { return fmt(n, 0); }
+  /* 1024 的整数倍写成 32k，其余写原数，避免两列显示成同一个近似值 */
+  function kTok(n) { return n >= 1024 && n % 1024 === 0 ? fmt(n / 1024, 0) + 'k' : tok(n); }
+  function q(l) { return '「' + l + '」'; }
+  function err(message, field) { const e = new Error(message); e.field = field; return e; }
+  function num(v, field, label, lo, hi, dp) {
+    const s = String(v == null ? '' : v).trim().replace(/[,，]/g, '');
+    if (s === '') throw err(label + '没填', field);
+    if (!/^[+]?(\d+\.?\d*|\.\d+)$/.test(s)) throw err(label + '要填正数（现在是「' + String(v).slice(0, 12) + '」）', field);
+    const x = Number(s);
+    if (x < lo || x > hi) throw err(label + '要在 ' + fmt(lo, 4) + ' 到 ' + fmt(hi, 4) + ' 之间', field);
+    const p = Math.pow(10, dp);
+    if (Math.abs(x * p - Math.round(x * p)) > 1e-6) throw err(label + (dp ? '最多 ' + dp + ' 位小数' : '要填整数'), field);
+    return x;
+  }
+  const quantById = (id) => QUANTS.find((x) => x.id === id) || null;
+  const kvById = (id) => KVS.find((x) => x.id === id) || null;
+  /* 输入的结构和哪个内置模型完全一样，就用它的名字 */
+  function modelName(P) {
+    const m = MODELS.find((x) => x.params === P.params && x.layers === P.layers && x.kvHeads === P.kvHeads && x.headDim === P.headDim && x.maxCtx === P.maxCtx);
+    return m ? m.name : (P.label || '自定义模型');
+  }
+
+  function parse(st) {
+    if (!st || typeof st !== 'object') throw err('没有输入', null);
+    const P = {};
+    P.vram = num(st.vram, 'vram', '显存（GiB）', 1, 1024, 1);
+    P.over = num(st.over, 'over', '额外开销（GiB）', 0, 64, 2);
+    if (P.over >= P.vram) throw err('额外开销（' + fmt(P.over, 2) + ' GiB）不能占满整张卡（' + fmt(P.vram, 1) + ' GiB）', 'over');
+    P.label = String(st.label == null ? '' : st.label).trim().slice(0, 24);
+    P.params = num(st.params, 'params', '参数量（B，十亿）', 0.1, 2000, 4);
+    P.layers = num(st.layers, 'layers', '层数', 1, 400, 0);
+    P.kvHeads = num(st.kvHeads, 'kvHeads', 'KV 头数', 1, 256, 0);
+    P.headDim = num(st.headDim, 'headDim', '每头维度', 8, 1024, 0);
+    P.maxCtx = num(st.maxCtx, 'maxCtx', '模型最长上下文', 512, 10000000, 0);
+    P.ctx = num(st.ctx, 'ctx', '想开的上下文（tokens）', 256, 10000000, 0);
+    if (P.ctx > P.maxCtx) throw err('想开的上下文 ' + tok(P.ctx) + ' 超过模型最长 ' + tok(P.maxCtx) + '（再长要靠 RoPE 外推，本页不算）', 'ctx');
+    const qt = String(st.quant || '');
+    if (qt === 'custom') {
+      P.bpw = num(st.bpw, 'bpw', '每个参数的位数', 1, 32, 4);
+      P.quantName = '自定义 ' + fmt(P.bpw, 4) + ' 位';
+    } else {
+      const Q = quantById(qt); if (!Q) throw err('量化格式没选', 'quant');
+      P.bpw = Q.bpw; P.quantName = Q.name;
+    }
+    P.quant = qt;
+    const K = kvById(String(st.kv || '')); if (!K) throw err('KV 缓存精度没选', 'kv');
+    P.kv = K.id; P.kvBytes = K.bytes; P.kvName = K.name;
+    P.name = modelName(P);
+    return P;
+  }
+
+  /* 一组条件下的显存账：weights / kvPerTok / need / maxFit / 部分上卡层数 */
+  function evalFit(P, bpw, ctx, kvBytes) {
+    const W = P.params * 1e9 * bpw / 8;
+    const kvTok = 2 * P.layers * P.kvHeads * P.headDim * kvBytes;
+    const kv = kvTok * ctx;
+    const vram = P.vram * GiB, over = P.over * GiB, avail = vram - over;
+    const need = W + kv + over;
+    const spare = vram - need;
+    let maxFit = 0;
+    if (W < avail) maxFit = Math.min(P.maxCtx, Math.floor((avail - W) / kvTok + 1e-9));
+    const fit = need <= vram + 1e-6;
+    let gpuLayers = P.layers;
+    if (!fit) {
+      const perLayer = (W + kv) / P.layers;
+      gpuLayers = Math.max(0, Math.min(P.layers - 1, Math.floor(avail / perLayer + 1e-9)));
+    }
+    return { W, kvTok, kv, need, spare, maxFit, fit, gpuLayers, avail, status: fit ? 'fit' : gpuLayers > 0 ? 'part' : 'none' };
+  }
+  /* 放下这个上下文最少要多大显存（GiB，未取整；显示时四舍五入两位） */
+  function minVram(P, bpw, ctx, kvBytes) { return evalFit(P, bpw, ctx, kvBytes).need / GiB; }
+  function cardFor(g) { return CARDS.find((c) => c >= g - 1e-9) || null; }
+  function ctxCols(P) {
+    const s = new Set(CTXCOLS.filter((c) => c <= P.maxCtx));
+    s.add(P.maxCtx); s.add(P.ctx);
+    return [...s].sort((a, b) => a - b).slice(-7);
+  }
+
+  function calculate(st) {
+    const P = parse(st);
+    const f = evalFit(P, P.bpw, P.ctx, P.kvBytes);
+    const r = { P, f };
+    r.minVram = minVram(P, P.bpw, P.ctx, P.kvBytes);
+    r.card = cardFor(r.minVram);
+    r.cols = ctxCols(P);
+    r.grid = QUANTS.map((Q) => ({ id: Q.id, name: Q.name, bpw: Q.bpw, exact: Q.exact, cells: r.cols.map((c) => evalFit(P, Q.bpw, c, P.kvBytes)), maxFit: evalFit(P, Q.bpw, P.ctx, P.kvBytes).maxFit }));
+    /* 能整个放进显卡、还开得了这么长上下文的最高精度预设 */
+    const ok = QUANTS.filter((Q) => evalFit(P, Q.bpw, P.ctx, P.kvBytes).fit);
+    r.bestQuant = ok.length ? ok[0] : null;
+    r.summary = summary(P, f, r);
+    r.facts = facts(P, f, r);
+    return r;
+  }
+  function head(P) { return q(P.name) + ' ' + P.quantName + ' 放进 ' + fmt(P.vram, 1) + ' GiB'; }
+  function summary(P, f, r) {
+    if (f.fit) {
+      return head(P) + '：上下文 ' + tok(P.ctx) + ' 放得下，还剩 ' + left(f.spare) + '；' +
+        (f.maxFit >= P.maxCtx ? '开到模型最长 ' + tok(P.maxCtx) + ' 也放得下。' : '最长能开到 ' + tok(f.maxFit) + '。');
+    }
+    const layersTxt = f.status === 'none' ? '一层都放不下，至少要 ' + gib(r.minVram * GiB) + '。' : '只有 ' + f.gpuLayers + '/' + P.layers + ' 层在卡上，其余交给 CPU。';
+    if (f.W < f.avail) {
+      return head(P) + '：上下文 ' + tok(P.ctx) + ' 放不下，差 ' + left(-f.spare) + '。整个模型放在卡上最长开到 ' + tok(f.maxFit) +
+        '；硬开 ' + tok(P.ctx) + ' 的话' + layersTxt;
+    }
+    return head(P) + '：光权重就要 ' + gib(f.W) + '，不比可用的 ' + gib(f.avail) + ' 少；上下文 ' + tok(P.ctx) + ' 时' + layersTxt;
+  }
+  function facts(P, f, r) {
+    const F = [];
+    F.push('显存账：权重 ' + gib(f.W) + ' + KV 缓存 ' + gib(f.kv) + '（每 1,000 tokens ' + fmt(f.kvTok * 1000 / 1048576, 1) + ' MiB）+ 额外开销 ' + gib(P.over * GiB) + ' = ' + gib(f.need) + '，卡是 ' + fmt(P.vram, 1) + ' GiB。');
+    F.push('上下文 ' + tok(P.ctx) + ' 整个放在卡上，最少要 ' + gib(r.minVram * GiB) + (r.card ? '，常见规格里最小是 ' + fmt(r.card, 0) + ' GiB 的卡。' : '，比常见单卡（192 GiB）还大。'));
+    if (r.bestQuant) F.push('同样 ' + tok(P.ctx) + ' 上下文，' + fmt(P.vram, 1) + ' GiB 能整个放下的最高精度是 ' + r.bestQuant.name + (r.bestQuant.exact ? '' : '（位数是约数）') + '。');
+    else F.push('同样 ' + tok(P.ctx) + ' 上下文，' + fmt(P.vram, 1) + ' GiB 连 Q3_K_M 都整个放不下。');
+    if (f.kv > f.W) F.push('KV 缓存比权重还大：上下文才是大头，KV 改 Q8_0 或把上下文砍短比换更低的量化管用。');
+    if (!f.fit && f.status !== 'none') F.push('部分上卡按每层一样大估：' + f.gpuLayers + ' 层 × ' + gib((f.W + f.kv) / P.layers) + '/层 ≤ 可用 ' + gib(f.avail) + '。有层放在内存里时速度会掉很多，本页不估速度。');
+    F.push('这是按格式标称位数的估算；llama.cpp、Ollama、LM Studio、vLLM 各自的计算缓冲不一样，实际以框架启动时打印的占用为准。');
+    return F;
+  }
+  function cellText(c) {
+    if (c.status === 'fit') return '剩 ' + left(c.spare);
+    if (c.status === 'part') return '差 ' + left(-c.spare);
+    return '一层也放不下';
+  }
+
+  function suggestions(st, r) {
+    const P = r.P, f = r.f, out = [];
+    const copy = (o) => JSON.parse(JSON.stringify(o));
+    const safe = (s) => { try { return calculate(s); } catch (e) { return null; } };
+    const tail = (r2) => r2.f.fit ? '放得下，剩 ' + left(r2.f.spare) + '，最长 ' + tok(r2.f.maxFit) + '。' : '还差 ' + left(-r2.f.spare) + '，' + r2.f.gpuLayers + '/' + P.layers + ' 层在卡上。';
+    /* ① KV 缓存降到 Q8_0 */
+    if (P.kv === 'f16') {
+      const s = copy(st); s.kv = 'q8_0'; const r2 = safe(s);
+      if (r2) out.push({ id: 'kv', apply: s, text: 'KV 缓存改 Q8_0（llama.cpp 要开 flash attention 才能用）：KV 从 ' + gib(f.kv) + ' 降到 ' + gib(r2.f.kv) + '，' + tail(r2) });
+    }
+    /* ② 量化：放不下降一档，放得下且更高一档也放得下就升一档 */
+    const qi = QUANTS.findIndex((x) => x.id === P.quant);
+    if (!f.fit) {
+      const nxt = qi >= 0 ? QUANTS[qi + 1] : QUANTS.find((x) => x.bpw < P.bpw);
+      if (nxt) { const s = copy(st); s.quant = nxt.id; const r2 = safe(s); if (r2) out.push({ id: 'quantDown', apply: s, text: '权重降到 ' + nxt.name + '：权重 ' + gib(r2.f.W) + '，' + tail(r2) }); }
+    } else if (r.bestQuant && r.bestQuant.bpw > P.bpw + 1e-9) {
+      const s = copy(st); s.quant = r.bestQuant.id; const r2 = safe(s);
+      if (r2) out.push({ id: 'quantUp', apply: s, text: '显存还有富余，权重可以用到 ' + r.bestQuant.name + '（精度更高）：权重 ' + gib(r2.f.W) + '，' + tail(r2) });
+    }
+    /* ③ 上下文：放不下砍到能放下的最长（取 1,024 的整数倍）；放得下且还能翻倍就提示开长 */
+    const c2 = Math.floor(f.maxFit / 1024) * 1024;
+    if (!f.fit && c2 >= 1024) {
+      const s = copy(st); s.ctx = String(c2); const r2 = safe(s);
+      if (r2) out.push({ id: 'ctxCut', apply: s, text: '上下文砍到 ' + tok(c2) + '：' + tail(r2) });
+    } else if (f.fit && c2 >= P.ctx * 2) {
+      const s = copy(st); s.ctx = String(c2); const r2 = safe(s);
+      if (r2) out.push({ id: 'ctxUp', apply: s, text: '上下文还能开到 ' + tok(c2) + '（' + kTok(c2) + '），整个模型照样在卡上：剩 ' + left(r2.f.spare) + '。' });
+    }
+    /* ④ 换卡：放不下时，最小的常见规格 */
+    if (!f.fit && r.card) {
+      const s = copy(st); s.vram = String(r.card); const r2 = safe(s);
+      if (r2) out.push({ id: 'card', apply: s, text: '换成 ' + fmt(r.card, 0) + ' GiB 的卡（至少要 ' + gib(r.minVram * GiB) + '）：' + tail(r2) });
+    }
+    return out;
+  }
+
+  function csvCell(s) { s = String(s); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
+  function statusName(c) { return c.status === 'fit' ? '放得下' : c.status === 'part' ? '部分上卡 ' + c.gpuLayers + '层' : '放不下'; }
+  function toCSV(r, when) {
+    const P = r.P, f = r.f, L = [];
+    const row = (a) => L.push(a.map(csvCell).join(','));
+    row(['模型名里那个8B', when]); row(['结论', r.summary]);
+    row(['模型', P.name, '参数量(B)', P.params, '层数', P.layers, 'KV头数', P.kvHeads, '每头维度', P.headDim, '最长上下文', P.maxCtx]);
+    row(['显存(GiB)', P.vram, '额外开销(GiB)', P.over, '量化', P.quantName, '每参数位数', P.bpw, 'KV精度', P.kvName, '上下文', P.ctx]);
+    row(['权重(GiB)', round(f.W / GiB, 4), 'KV(GiB)', round(f.kv / GiB, 4), '合计(GiB)', round(f.need / GiB, 4), '剩余(GiB)', round(f.spare / GiB, 4), '最长上下文(整模在卡)', f.maxFit, '在卡层数', f.gpuLayers]);
+    L.push('');
+    row(['量化 \\ 上下文'].concat(r.cols.map(String)).concat(['整模在卡最长']));
+    r.grid.forEach((g) => row([g.name].concat(g.cells.map((c) => statusName(c) + ' ' + round(c.spare / GiB, 2))).concat([g.maxFit])));
+    return L.join('\n') + '\n';
+  }
+  function toMD(r, when, sg) {
+    const P = r.P, f = r.f, L = [];
+    L.push('# 模型名里那个8B', '', '生成时间：' + when + '　' + P.name + '（' + fmt(P.params, 4) + 'B，' + P.layers + ' 层，KV 头 ' + P.kvHeads + '×' + P.headDim + '），' + P.quantName + '，KV ' + P.kvName + '，显存 ' + fmt(P.vram, 1) + ' GiB，额外开销 ' + fmt(P.over, 2) + ' GiB', '', '**' + r.summary + '**', '');
+    L.push('| 量化 | ' + r.cols.map(tok).join(' | ') + ' | 整模在卡最长 |', '|---|' + r.cols.map(() => '---:').join('|') + '|---:|');
+    r.grid.forEach((g) => L.push('| ' + g.name + ' | ' + g.cells.map((c) => (c.status === 'fit' ? '✓ ' : c.status === 'part' ? '◐ ' + c.gpuLayers + '层 ' : '✗ ') + cellText(c)).join(' | ') + ' | ' + (g.maxFit ? tok(g.maxFit) : '—') + ' |'));
+    L.push('', '## 要点', ''); r.facts.forEach((x) => L.push('- ' + x));
+    if (sg && sg.length) { L.push('', '## 换个条件', ''); sg.forEach((s) => L.push('- ' + s.text)); }
+    L.push('', '按量化格式标称位数估算，不是实测；额外开销是自己填的。默认场景为虚构。');
+    return L.join('\n') + '\n';
+  }
+
+  const API = { left, GiB, QUANTS, KVS, MODELS, CARDS, round, fmt, gib, tok, kTok, q, parse, evalFit, minVram, cardFor, ctxCols, calculate, cellText, statusName, suggestions, toCSV, toMD, modelName };
+  if (typeof module !== 'undefined' && module.exports) module.exports = API;
+  else root.AppCore = API;
+})(typeof window !== 'undefined' ? window : globalThis);
+
+  </script>
+  <script>
+/* 模型名里那个8B · 界面层 */
+(function () {
+  'use strict';
+  const C = window.AppCore;
+  const KEY = 'vram-fit:v1';
+  const FIELDS = ['vram', 'over', 'label', 'params', 'layers', 'kvHeads', 'headDim', 'maxCtx', 'ctx', 'bpw'];
+  const SELS = ['quant', 'kv'];
+  const ARCH = ['label', 'params', 'layers', 'kvHeads', 'headDim', 'maxCtx'];
+  const LIM = { vram: 6, over: 6, label: 24, params: 10, layers: 4, kvHeads: 4, headDim: 5, maxCtx: 9, ctx: 9, bpw: 8, quant: 10, kv: 10 };
+  const copy = (o) => JSON.parse(JSON.stringify(o));
+  function arch(id) { const m = C.MODELS.find((x) => x.id === id); return { label: m.name, params: String(m.params), layers: String(m.layers), kvHeads: String(m.kvHeads), headDim: String(m.headDim), maxCtx: String(m.maxCtx) }; }
+  function mkState(model, o) { return Object.assign({ vram: '8', over: '0.8' }, arch(model), { ctx: '32768', quant: 'q4_k_m', bpw: '4.85', kv: 'f16' }, o || {}); }
+  const DEFAULT = mkState('qwen3-8b');
+  const PRESETS = [
+    ['默认：8 GiB 卡跑 Qwen3-8B，开 32k', DEFAULT],
+    ['12 GiB 卡跑 14B', mkState('qwen3-14b', { vram: '12', ctx: '16384' })],
+    ['24 GiB 卡跑 32B', mkState('qwen2.5-32b', { vram: '24', over: '1', ctx: '32768' })],
+    ['6 GiB 笔记本跑 7B', mkState('qwen2.5-7b', { vram: '6', over: '0.6', ctx: '8192' })],
+    ['4 GiB 硬上 32B', mkState('qwen3-32b', { vram: '4', over: '0.5', ctx: '4096' })]
+  ];
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  let state = copy(DEFAULT);
+  let last = null;
+
+  function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { /* 隐私模式忽略 */ } }
+  function load() {
+    try {
+      const o = JSON.parse(localStorage.getItem(KEY) || 'null');
+      if (!o || typeof o !== 'object' || Array.isArray(o)) return null;
+      const s = {};
+      for (const k of FIELDS.concat(SELS)) { if (o[k] == null) return null; s[k] = String(o[k]).slice(0, LIM[k]); }
+      return s;
+    } catch (e) { return null; }
+  }
+  function matchModel() {
+    const m = C.MODELS.find((x) => { const a = arch(x.id); return ['params', 'layers', 'kvHeads', 'headDim', 'maxCtx'].every((k) => String(state[k]).trim() === a[k]); });
+    return m ? m.id : 'custom';
+  }
+  function fill() {
+    FIELDS.forEach((k) => { $(k).value = state[k]; });
+    SELS.forEach((k) => { $(k).value = state[k]; });
+    $('model').value = matchModel();
+    $('bpwBox').style.display = state.quant === 'custom' ? '' : 'none';
+  }
+  function sugList(box, sg) {
+    box.innerHTML = '';
+    sg.forEach((x) => {
+      const d = document.createElement('div'); d.className = 'sug';
+      d.innerHTML = '<span>' + esc(x.text) + '</span>';
+      const bt = document.createElement('button'); bt.textContent = '代回去算'; bt.dataset.sug = x.id;
+      bt.addEventListener('click', () => { state = copy(x.apply); fill(); run(); });
+      d.appendChild(bt); box.appendChild(d);
+    });
+  }
+  /* 显存条的刻度：按 GiB 画格子，太多就每 2/5/10… GiB 一格 */
+  function gaugeScale(r) { return Math.max(r.P.vram, r.f.need / C.GiB); }
+  function tickStep(M) { for (const s of [1, 2, 4, 8, 16, 32, 64, 128]) if (M / s <= 24) return s; return 256; }
+  function renderGauge(r) {
+    const P = r.P, f = r.f, G = C.GiB, M = gaugeScale(r);
+    const pc = (x) => (x / M * 100).toFixed(3) + '%';
+    const w = f.W / G, k = f.kv / G, o = P.over;
+    const step = tickStep(M);
+    $('gauge').style.setProperty('--u', (step / M * 100).toFixed(4) + '%');
+    let h = '<div class="seg o" style="left:0;width:' + pc(o) + '"></div>' +
+      '<div class="seg w" style="left:' + pc(o) + ';width:' + pc(w) + '"></div>' +
+      '<div class="seg k" style="left:' + pc(o + w) + ';width:' + pc(k) + '"></div>';
+    if (!f.fit) h += '<div class="seg spill" style="left:' + pc(P.vram) + ';width:' + pc(M - P.vram) + '"></div>';
+    h += '<div class="seg" style="left:calc(' + pc(P.vram) + ' - 2px);width:4px;background:#22211d"></div>';
+    $('gauge').innerHTML = h;
+    $('gaxis').innerHTML = '<span>0</span><span>卡 ' + C.fmt(P.vram, 1) + ' GiB' + (f.fit ? '' : ' · 需要 ' + C.gib(f.need)) + '</span><span>' + C.fmt(M, 2) + ' GiB</span>';
+    $('gleg').innerHTML = '<span><i style="background:#8f8b80"></i>额外开销 ' + C.gib(P.over * G) + '</span><span><i style="background:#3b4d7a"></i>权重 ' + C.gib(f.W) + '</span><span><i style="background:#c98a2b"></i>KV 缓存 ' + C.gib(f.kv) + '</span>' +
+      (f.fit ? '<span><i style="background:#f6f5f0;border:1px solid #b4b0a3"></i>空着 ' + C.gib(f.spare) + '</span>' : '<span><i style="background:#b23a2b"></i>超出 ' + C.left(-f.spare) + '</span>');
+  }
+  function renderGrid(r) {
+    const P = r.P;
+    let h = '<tr><th class="r">量化 \\ 上下文</th>' + r.cols.map((c) => '<th>' + C.kTok(c) + '</th>').join('') + '<th>整模在卡最长</th></tr>';
+    r.grid.forEach((g) => {
+      h += '<tr><th class="r">' + esc(g.name) + '</th>' + g.cells.map((c, j) => {
+        const cur = Math.abs(g.bpw - P.bpw) < 1e-9 && r.cols[j] === P.ctx;
+        return '<td class="' + c.status + (cur ? ' cur' : '') + '">' + (c.status === 'part' ? c.gpuLayers + '/' + P.layers + ' 层<br>' : '') + esc(C.cellText(c)) + '</td>';
+      }).join('') + '<td class="mx">' + (g.maxFit ? C.tok(g.maxFit) : '—') + '</td></tr>';
+    });
+    $('grid').innerHTML = h;
+  }
+  function render(r, sg) {
+    $('summary').textContent = r.summary;
+    $('facts').innerHTML = r.facts.map((f) => '<li>' + esc(f) + '</li>').join('');
+    renderGauge(r); renderGrid(r);
+    $('sugCard').style.display = sg.length ? '' : 'none';
+    sugList($('sugs'), sg);
+  }
+  function plate() {
+    const id = matchModel();
+    const nm = id === 'custom' ? (String(state.label).trim() || '自定义模型') : arch(id).label;
+    $('plateName').innerHTML = esc(nm) + '<small>' + esc(String(state.params).trim() || '?') + 'B · ' + esc(String(state.layers).trim() || '?') + ' 层 · KV 头 ' + esc(String(state.kvHeads).trim() || '?') + '×' + esc(String(state.headDim).trim() || '?') + '</small>';
+    $('model').value = id;
+  }
+  function run() {
+    [].forEach.call(document.querySelectorAll('.bad'), (e) => e.classList.remove('bad'));
+    $('bpwBox').style.display = state.quant === 'custom' ? '' : 'none';
+    plate();
+    try {
+      const r = C.calculate(state);
+      const sg = C.suggestions(state, r);
+      $('error').style.display = 'none'; $('out').style.display = '';
+      render(r, sg);
+      last = { r, sg };
+    } catch (e) {
+      last = null;
+      if (e.field) { const el = $(e.field); if (el) { el.classList.add('bad'); if (ARCH.includes(e.field)) $('arch').open = true; } }
+      $('error').textContent = '算不了：' + e.message; $('error').style.display = 'block';
+      $('out').style.display = 'none';
+    }
+    save();
+  }
+
+  /* ── 导出 ── */
+  function stamp() { const d = new Date(), z = (n) => String(n).padStart(2, '0'); return d.getFullYear() + '-' + z(d.getMonth() + 1) + '-' + z(d.getDate()) + ' ' + z(d.getHours()) + ':' + z(d.getMinutes()); }
+  function download(name, blob) { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000); }
+  function wrap(g, t, w) {
+    const NOHEAD = '，。、；：！？）」』%·';
+    const out = []; let line = [];
+    const toks = String(t).match(/[+-]?[0-9][0-9,.:%]*|[A-Za-z_][A-Za-z0-9_.\-]*|[\s\S]/g) || [];
+    const width = (a) => g.measureText(a.join('')).width;
+    for (const tk of toks) {
+      if (line.length && width(line.concat([tk])) > w) {
+        let carry = [tk];
+        while (line.length > 1 && (NOHEAD.indexOf(carry[0][0]) >= 0 || '（「『'.indexOf(line[line.length - 1]) >= 0)) carry.unshift(line.pop());
+        out.push(line.join(''));
+        line = carry; if (/^\s+$/.test(line[0])) line.shift();
+      } else line.push(tk);
+    }
+    if (line.length) out.push(line.join('')); return out;
+  }
+  function fitText(g, t, w, size, min, bold, FF) {
+    let fs = size; g.font = (bold ? 'bold ' : '') + fs + 'px ' + FF;
+    while (fs > min && g.measureText(t).width > w) { fs -= 1; g.font = (bold ? 'bold ' : '') + fs + 'px ' + FF; }
+    if (g.measureText(t).width <= w) return t;
+    let s = t; while (s.length > 1 && g.measureText(s + '…').width > w) s = s.slice(0, -1);
+    return s + '…';
+  }
+  function drawPNG(Lx) {
+    const r = Lx.r, P = r.P, f = r.f, G = C.GiB;
+    const Wd = 1080, H = 1350, X = 90, TW = 900;
+    const cv = document.createElement('canvas'); cv.width = Wd; cv.height = H;
+    const g = cv.getContext('2d'), FF = '"PingFang SC","Microsoft YaHei",sans-serif';
+    g.fillStyle = '#f1f0ec'; g.fillRect(0, 0, Wd, H);
+    g.fillStyle = '#fff'; g.fillRect(50, 50, Wd - 100, H - 100);
+    g.fillStyle = '#6d695f';
+    g.fillText(fitText(g, '模型名里那个8B · ' + P.name + ' · ' + P.quantName + ' · KV ' + P.kvName, TW, 26, 16, false, FF), X, 116);
+    g.fillStyle = '#22211d'; g.font = 'bold 32px ' + FF;
+    let y = 168;
+    const sl = wrap(g, r.summary, TW);
+    if (sl.length > 4) { sl.length = 4; sl[3] = fitText(g, sl[3] + '……', TW, 32, 32, true, FF); }
+    sl.forEach((l) => { g.fillText(l, X, y); y += 44; });
+    y += 14;
+    /* 显存条 */
+    const M = gaugeScale(r), BX = X, BW = TW, BH = 64;
+    const px = (v) => v / M * BW;
+    g.fillStyle = '#f6f5f0'; g.fillRect(BX, y, BW, BH);
+    const step = tickStep(M); g.fillStyle = '#e2dfd5';
+    for (let v = step; v < M - 1e-9; v += step) g.fillRect(BX + px(v) - 0.5, y, 1, BH);
+    let cx = BX;
+    [[P.over, '#8f8b80'], [f.W / G, '#3b4d7a'], [f.kv / G, '#c98a2b']].forEach(([v, c]) => { g.fillStyle = c; g.fillRect(cx, y, px(v), BH); cx += px(v); });
+    if (!f.fit) { g.save(); g.beginPath(); g.rect(BX + px(P.vram), y, BW - px(P.vram), BH); g.clip(); g.strokeStyle = '#b23a2b'; g.lineWidth = 3; for (let hx = BX + px(P.vram) - BH; hx < BX + BW; hx += 11) { g.beginPath(); g.moveTo(hx, y + BH); g.lineTo(hx + BH, y); g.stroke(); } g.restore(); }
+    g.fillStyle = '#22211d'; g.fillRect(BX + px(P.vram) - 2, y - 8, 4, BH + 16);
+    g.strokeStyle = '#22211d'; g.lineWidth = 2; g.strokeRect(BX, y, BW, BH);
+    y += BH + 34;
+    g.font = '19px ' + FF; g.fillStyle = '#6d695f';
+    const vt = '卡 ' + C.fmt(P.vram, 1) + ' GiB', vx = BX + px(P.vram), vw = g.measureText(vt).width;
+    g.fillText('0', BX, y);
+    g.fillText(vt, Math.max(BX + 30, Math.min(vx - vw / 2, BX + BW - vw - (f.fit ? 0 : 140))), y);
+    if (!f.fit) { const t2 = C.fmt(M, 2) + ' GiB'; g.fillText(t2, BX + BW - g.measureText(t2).width, y); }
+    y += 40;
+    g.font = '21px ' + FF; let lx = X;
+    [['额外 ' + C.gib(P.over * G), '#8f8b80'], ['权重 ' + C.gib(f.W), '#3b4d7a'], ['KV ' + C.gib(f.kv), '#c98a2b'], [f.fit ? '空着 ' + C.left(f.spare) : '超出 ' + C.left(-f.spare), f.fit ? '#d8d5cb' : '#b23a2b']].forEach(([t, c]) => {
+      const w = 26 + g.measureText(t).width + 26; if (lx + w > X + TW) { lx = X; y += 32; }
+      g.fillStyle = c; g.fillRect(lx, y - 16, 18, 18); g.fillStyle = '#22211d'; g.fillText(t, lx + 26, y); lx += w;
+    });
+    y += 46;
+    /* 量化 × 上下文 小格子 */
+    g.font = '20px ' + FF; g.fillStyle = '#6d695f'; g.fillText('换量化、换上下文（绿 = 放得下，黄 = 部分层上卡，红 = 放不下）', X, y); y += 18;
+    const cols = r.cols, LW = 160, CW = (TW - LW) / cols.length, RH = 40;
+    g.font = '17px ' + FF; g.fillStyle = '#6d695f';
+    cols.forEach((c, j) => { const t = C.kTok(c); g.fillText(t, X + LW + j * CW + (CW - g.measureText(t).width) / 2, y + 20); });
+    y += 30;
+    const FILL = { fit: '#dbe8d4', part: '#f6e3bf', none: '#f1d0c9' }, INK = { fit: '#234019', part: '#6a4508', none: '#7c2416' };
+    r.grid.forEach((row) => {
+      g.fillStyle = '#22211d'; g.font = '18px ' + FF; g.fillText(row.name.replace('（不量化）', ''), X, y + 26);
+      row.cells.forEach((c, j) => {
+        const x0 = X + LW + j * CW + 2;
+        g.fillStyle = FILL[c.status]; g.fillRect(x0, y, CW - 4, RH - 4);
+        if (Math.abs(row.bpw - P.bpw) < 1e-9 && cols[j] === P.ctx) { g.strokeStyle = '#22211d'; g.lineWidth = 3; g.strokeRect(x0 + 1.5, y + 1.5, CW - 7, RH - 7); }
+        const t = c.status === 'none' ? '✗' : (c.status === 'fit' ? '+' : '−') + (Math.abs(c.spare) / G).toFixed(1);
+        g.fillStyle = INK[c.status]; g.font = '16px ' + FF; g.fillText(fitText(g, t, CW - 10, 16, 11, false, FF), x0 + 5, y + 25);
+      });
+      y += RH;
+    });
+    y += 40;
+    const bottom = H - 140;
+    g.font = '22px ' + FF; g.fillStyle = '#22211d';
+    for (const fx of r.facts.slice(0, -1)) {
+      const ls = wrap(g, '· ' + fx, TW);
+      if (y + ls.length * 32 > bottom) break;
+      ls.forEach((l) => { g.fillText(l, X, y); y += 32; }); y += 4;
+    }
+    if (Lx.sg.length && y + 90 < bottom) {
+      y += 22; g.font = '20px ' + FF; g.fillStyle = '#6d695f'; g.fillText('换个条件', X, y); y += 34;
+      g.font = '21px ' + FF; g.fillStyle = '#3b4d7a';
+      for (const sx of Lx.sg) {
+        const ls = wrap(g, '→ ' + sx.text, TW);
+        if (y + ls.length * 30 > bottom) break;
+        ls.forEach((l) => { g.fillText(l, X, y); y += 30; }); y += 6;
+      }
+    }
+    g.fillStyle = '#6d695f'; g.font = '19px ' + FF;
+    wrap(g, '按量化格式标称位数估算，不是实测；格子里的数是剩余（+）或差多少（−）GiB。额外开销是自己填的，各框架实际占用以启动日志为准。场景为虚构。', TW).forEach((l, i) => g.fillText(l, X, H - 104 + i * 28));
+    return Promise.resolve(cv);
+  }
+  function backup() {
+    const r = last.r, f = r.f, G = C.GiB;
+    return { app: '模型名里那个8B', version: 1, savedAt: stamp(), input: copy(state),
+      result: { summary: r.summary, facts: r.facts, fit: f.fit, status: f.status, weightsGiB: C.round(f.W / G, 4), kvGiB: C.round(f.kv / G, 4), needGiB: C.round(f.need / G, 4), spareGiB: C.round(f.spare / G, 4),
+        maxContextOnGPU: f.maxFit, gpuLayers: f.gpuLayers, layers: r.P.layers, minVramGiB: C.round(r.minVram, 4), smallestCommonCard: r.card, bestQuant: r.bestQuant ? r.bestQuant.name : null,
+        grid: r.grid.map((g) => ({ quant: g.name, cells: g.cells.map((c, j) => ({ ctx: r.cols[j], status: c.status, spareGiB: C.round(c.spare / G, 4), gpuLayers: c.gpuLayers })), maxContextOnGPU: g.maxFit })) } };
+  }
+  function init() {
+    $('model').innerHTML = C.MODELS.map((m) => '<option value="' + m.id + '">' + esc(m.name) + '</option>').join('') + '<option value="custom">自定义（照 config.json 填）</option>';
+    $('quant').innerHTML = C.QUANTS.map((x) => '<option value="' + x.id + '">' + esc(x.name) + '（' + C.fmt(x.bpw, 4) + ' 位' + (x.exact ? '' : '，约') + '）</option>').join('') + '<option value="custom">自定义位数</option>';
+    $('kv').innerHTML = C.KVS.map((x) => '<option value="' + x.id + '">' + esc(x.name) + '（' + C.fmt(x.bytes, 4) + ' 字节）</option>').join('');
+    FIELDS.forEach((k) => $(k).addEventListener('input', () => { state[k] = $(k).value; run(); }));
+    SELS.forEach((k) => $(k).addEventListener('change', () => { state[k] = $(k).value; run(); }));
+    $('model').addEventListener('change', () => {
+      const id = $('model').value;
+      if (id === 'custom') { $('arch').open = true; state.label = state.label || '自定义模型'; }
+      else { Object.assign(state, arch(id)); const mx = Number(state.maxCtx); if (Number(String(state.ctx).replace(/[,，]/g, '')) > mx) state.ctx = String(mx); }
+      fill(); run();
+    });
+    PRESETS.forEach((p) => {
+      const b = document.createElement('button'); b.className = 'ghost'; b.textContent = p[0];
+      b.addEventListener('click', () => { state = copy(p[1]); fill(); run(); });
+      $('presets').appendChild(b);
+    });
+    $('reset').addEventListener('click', () => { state = copy(DEFAULT); fill(); run(); });
+    $('dlCSV').addEventListener('click', () => { if (last) download('模型名里那个8B.csv', new Blob(['\ufeff' + C.toCSV(last.r, stamp())], { type: 'text/csv;charset=utf-8' })); });
+    $('dlMD').addEventListener('click', () => { if (last) download('模型名里那个8B.md', new Blob([C.toMD(last.r, stamp(), last.sg)], { type: 'text/markdown;charset=utf-8' })); });
+    $('dlJSON').addEventListener('click', () => { if (last) download('模型名里那个8B-备份.json', new Blob([JSON.stringify(backup(), null, 2)], { type: 'application/json' })); });
+    $('dlPNG').addEventListener('click', () => { if (last) drawPNG(last).then((cv) => cv.toBlob((b) => download('模型名里那个8B-1080x1350.png', b), 'image/png')); });
+    state = load() || copy(DEFAULT);
+    fill(); run();
+    window.__ex = { last: () => last, state: () => state, presets: PRESETS };
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
+})();
+
+  </script>
+</body>
+</html>
